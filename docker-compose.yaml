@@ -1,51 +1,9 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-#
+version: "3"
 
-# Basic Airflow cluster configuration for CeleryExecutor with Redis and PostgreSQL.
-#
-# WARNING: This configuration is for local development. Do not use it in a production deployment.
-#
-# This configuration supports basic configuration using environment variables or an .env file
-# The following variables are supported:
-#
-# AIRFLOW_IMAGE_NAME           - Docker image name used to run Airflow.
-#                                Default: apache/airflow:2.4.0
-# AIRFLOW_UID                  - User ID in Airflow containers
-#                                Default: 50000
-# Those configurations are useful mostly in case of standalone testing/running Airflow in test/try-out mode
-#
-# _AIRFLOW_WWW_USER_USERNAME   - Username for the administrator account (if requested).
-#                                Default: airflow
-# _AIRFLOW_WWW_USER_PASSWORD   - Password for the administrator account (if requested).
-#                                Default: airflow
-# _PIP_ADDITIONAL_REQUIREMENTS - Additional PIP requirements to add when starting all containers.
-#                                Default: ''
-#
-# Feel free to modify this file to suit your needs.
----
-version: '3'
 x-airflow-common:
   &airflow-common
-  # In order to add custom dependencies or upgrade provider packages you can use your extended image.
-  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
-  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
   image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.4.0}
-  # build: .
+  # build
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -53,7 +11,7 @@ x-airflow-common:
     # For backward compatibility, with Airflow <2.3
     AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:12000/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
@@ -70,16 +28,28 @@ x-airflow-common:
       condition: service_healthy
     postgres:
       condition: service_healthy
+  
+x-redash-service: &redash-service
+  image: redash/redash:8.0.0.b32245
+  depends_on:
+    - postgres
+    - redis
+  volumes: 
+    - .:/app
+  env_file: redash.env
+  restart: always
 
 services:
   postgres:
     image: postgres:13
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: PG13#Njogu
+      POSTGRES_DB: pNeuma_Traffic_DB
+    ports:
+      - 5432:5432
     volumes:
-      - postgres-db-volume:/var/lib/postgresql/data
+      - .:/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s
@@ -88,14 +58,12 @@ services:
 
   redis:
     image: redis:latest
-    expose:
-      - 6379
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 30s
       retries: 50
-    restart: always
+    restart: unless-stopped
 
   airflow-webserver:
     <<: *airflow-common
@@ -164,7 +132,7 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    entrypoint: /bin/bash
+    entrypoint: /bin/sh
     # yamllint disable rule:line-length
     command:
       - -c
@@ -273,6 +241,43 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
-
-volumes:
-  postgres-db-volume:
+    
+  server:
+    <<: *redash-service
+    command: server
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "5000:5000"
+      - "5678:5678"
+    environment:
+      REDASH_WEB_WORKERS: 4
+  scheduler:
+      <<: *redash-service
+      command: scheduler
+      environment:
+        QUEUES: "celery"
+        WORKERS_COUNT: 1
+  scheduled_worker:
+    <<: *redash-service
+    command: worker
+    environment:
+      QUEUES: "scheduled_queries,schemas"
+      WORKERS_COUNT: 1
+  adhoc_worker:
+    <<: *redash-service
+    command: worker
+    environment:
+      QUEUES: "queries"
+      WORKERS_COUNT: 2
+  
+  nginx:
+    image: nginx:latest
+    ports:
+      - "5001:80"
+    depends_on:
+      - server
+    links:
+      - server:redash
+    restart: always
