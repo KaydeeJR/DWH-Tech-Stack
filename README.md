@@ -45,4 +45,4 @@ The buses have bus stops. Each vehicle has its dimensions in metres.
 
 :file_folder: **tests**
 
-:link: TODO: link to deployed dbt data warehouse documentation
+:link: http://127.0.0.1:8080/#!/overview
