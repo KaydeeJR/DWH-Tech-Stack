@@ -64,7 +64,9 @@ class ConnectToDB:
         # close the db session
         session.close()
 
-    #def load_time_frequency_data():
+    def load_time_frequency_data():
+        pass
+
 
 if __name__ == '__main__':
     # initatialize engine to connect to DB
@@ -77,3 +79,4 @@ if __name__ == '__main__':
     # INSERT INTO TABLE
     path = "D:\\10XAcademy\\DWH-Tech-Stack\\postgresql\\data\\20181024_d5_0830_0900.csv"
     db_connect.load_trajectory_data(db_session, "trajectories_data",path)
+    db_connect.load_time_frequency_data()

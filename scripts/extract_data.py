@@ -24,13 +24,13 @@ def get_trajectory_info(row_as_list)->tuple:
     trajectory_info.append(row_as_list[3])
     return tuple(trajectory_info)
 
-def get_vehicle_data():
+def get_vehicle_data(path_to_file):
     """
     the last 6/10 columns are repeated every 6 columns based on the time frequency.
     For example, column_5 contains the latitude of the vehicle at time column_9, and column­­­_11 contains the latitude of the vehicle at time column_15
     """
   
-    df = read_csv_file(filePath="D:\\10XAcademy\\DWH-Tech-Stack\\postgresql\\db_schema.sql")
+    df = read_csv_file(path_to_file)
     for data_index in range(len(df.values)):
         if data_index==0:
             track_data = str(df.values[data_index]).split(';')
@@ -48,5 +48,5 @@ def get_file_details(filePath)->tuple:
     time=fileName.split("_")[2]+(fileName.split("_")[3])
     return (drone_no, date, time)
 
-#if __name__ == '__main__':
- #   get_file_details("D:\\10XAcademy\\DWH-Tech-Stack\\postgresql\\data\\20181024_d5_0830_0900")
+if __name__ == '__main__':
+    get_vehicle_data()
