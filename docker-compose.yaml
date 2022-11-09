@@ -11,7 +11,6 @@ x-airflow-common:
     # For backward compatibility, with Airflow <2.3
     AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:12000/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
@@ -21,65 +20,54 @@ x-airflow-common:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
+    - ./data:/opt/airflow/data
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
-    redis:
-      condition: service_healthy
     postgres:
       condition: service_healthy
   
 x-redash-service: &redash-service
   image: redash/redash:8.0.0.b32245
-  depends_on:
-    - postgres
-    - redis
+  #depends_on:
+   # - postgres
   volumes: 
     - .:/app
-  env_file: redash.env
+  env_file: .env
   restart: always
 
 services:
   postgres:
     image: postgres:13
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: PG13#Njogu
-      POSTGRES_DB: pNeuma_Traffic_DB
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
     ports:
-      - 5432:5432
+      - 5433:5432
     volumes:
-      - .:/data
+      - postgresql-db-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
-      interval: 5s
-      retries: 5
+     test: ["CMD", "pg_isready", "-U", "airflow"]
+     interval: 5s
+     retries: 5
     restart: always
-
-  redis:
-    image: redis:latest
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 30s
-      retries: 50
-    restart: unless-stopped
 
   airflow-webserver:
-    <<: *airflow-common
-    command: webserver
-    ports:
-      - 8080:8080
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
+   <<: *airflow-common
+   command: webserver
+   ports:
+        - 8080:8080
+   healthcheck:
+        test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+        interval: 10s
+        timeout: 10s
+        retries: 5
+   restart: always
+   depends_on:
+        <<: *airflow-common-depends-on
+        airflow-init:
+          condition: service_completed_successfully
 
   airflow-scheduler:
     <<: *airflow-common
@@ -132,7 +120,7 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    entrypoint: /bin/sh
+    entrypoint: /bin/bash
     # yamllint disable rule:line-length
     command:
       - -c
@@ -245,9 +233,8 @@ services:
   server:
     <<: *redash-service
     command: server
-    depends_on:
-      - postgres
-      - redis
+    # depends_on:
+    #   - postgres
     ports:
       - "5000:5000"
       - "5678:5678"
@@ -281,3 +268,6 @@ services:
     links:
       - server:redash
     restart: always
+
+volumes:
+  postgresql-db-volume:
